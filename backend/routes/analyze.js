@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
         event_id: eventData?.[0]?.id,
         event_description: event,
         user_id: user_id,
-        overall_impact: analysis.overall_market_impact,
+       overall_impact: analysis.overall_market_impact?.direction,
         confidence_level: analysis.confidence_level,
         time_horizon: analysis.time_horizon,
         full_analysis: analysis

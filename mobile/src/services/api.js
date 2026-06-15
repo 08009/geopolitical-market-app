@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient';
 
-const API_URL = 'http://192.168.29.106:5000/api';
+const API_URL = 'https://geopolitical-market-backend.onrender.com/api';
 
 const getUserId = async () => {
   const { data: { session } } = await supabase.auth.getSession();
