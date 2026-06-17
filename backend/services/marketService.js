@@ -18,15 +18,45 @@ const getStockQuote = async (symbol) => {
   }
 };
 
-// Get Indian market overview (Nifty 50, Sensex)
+// Get Indian market overview (Nifty 50, Sensex) using a free Yahoo Finance endpoint (no key needed)
+const getYahooQuote = async (symbol) => {
+  try {
+    const response = await axios.get(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    const result = response.data?.chart?.result?.[0];
+    const meta = result?.meta;
+    if (meta?.regularMarketPrice) {
+      return {
+        price: meta.regularMarketPrice,
+        previousClose: meta.previousClose ?? meta.chartPreviousClose,
+        changePercent: meta.previousClose
+          ? (((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100).toFixed(2)
+          : null
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn(`Yahoo quote fetch failed for ${symbol}:`, error.message);
+    return null;
+  }
+};
+
 const getIndianMarketOverview = async () => {
   try {
-    const nifty = await getStockQuote('NIFTY50.BSE');
-    const sensex = await getStockQuote('SENSEX.BSE');
-    
+    const [nifty, sensex, crudeOil, gold] = await Promise.all([
+      getYahooQuote('%5ENSEI'),     // Nifty 50
+      getYahooQuote('%5EBSESN'),    // Sensex
+      getYahooQuote('CL=F'),        // WTI Crude Oil futures
+      getYahooQuote('GC=F')         // Gold futures
+    ]);
+
     return {
       nifty50: nifty,
       sensex: sensex,
+      crudeOilWTI: crudeOil,
+      gold: gold,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
@@ -34,6 +64,8 @@ const getIndianMarketOverview = async () => {
     return {
       nifty50: null,
       sensex: null,
+      crudeOilWTI: null,
+      gold: null,
       timestamp: new Date().toISOString()
     };
   }
@@ -59,16 +91,38 @@ const getCommodityPrice = async (commodity) => {
   }
 };
 
-// Get USD to INR exchange rate
+// Get USD to INR exchange rate, with a free fallback if Alpha Vantage fails/rate-limits
 const getUSDINR = async () => {
   try {
     const response = await axios.get(
       `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=USD&to_currency=INR&apikey=${ALPHA_VANTAGE_KEY}`
     );
-    return response.data['Realtime Currency Exchange Rate'];
+    const rate = response.data['Realtime Currency Exchange Rate'];
+    if (rate && rate['5. Exchange Rate']) {
+      return {
+        rate: parseFloat(rate['5. Exchange Rate']),
+        source: 'alphavantage',
+        timestamp: rate['6. Last Refreshed'] || new Date().toISOString()
+      };
+    }
+    throw new Error('Alpha Vantage returned no rate, trying fallback');
   } catch (error) {
-    console.error('Error fetching USD/INR rate:', error);
-    return null;
+    console.warn('Alpha Vantage USD/INR failed, using fallback API:', error.message);
+    try {
+      const fallback = await axios.get('https://open.er-api.com/v6/latest/USD');
+      const inrRate = fallback.data?.rates?.INR;
+      if (inrRate) {
+        return {
+          rate: inrRate,
+          source: 'fallback',
+          timestamp: fallback.data?.time_last_update_utc || new Date().toISOString()
+        };
+      }
+      return null;
+    } catch (fallbackError) {
+      console.error('Fallback USD/INR fetch also failed:', fallbackError.message);
+      return null;
+    }
   }
 };
 

@@ -28,6 +28,7 @@ const validateCore = (data) => {
     typeof data?.overall_market_impact?.probability === 'number' &&
     data?.overall_market_impact?.risk_level &&
     data?.overall_market_impact?.nifty_impact &&
+    Array.isArray(data?.assumptions) && data.assumptions.length > 0 &&
     Array.isArray(data?.sectors) && data.sectors.length > 0 &&
     data.sectors[0]?.probability != null &&
     Array.isArray(data.sectors[0]?.reasoning)
@@ -38,7 +39,10 @@ const validateAdvanced = (data) => {
   return !!(
     Array.isArray(data?.historical_matches) && data.historical_matches.length > 0 &&
     data?.scenario_analysis?.scenario_1 &&
-    data?.winners_losers?.top_winners
+    data?.winners_losers?.top_winners &&
+    Array.isArray(data?.key_risks) && data.key_risks.length > 0 &&
+    typeof data.key_risks[0] === 'object' &&
+    data.key_risks[0]?.risk
   );
 };
 
@@ -55,7 +59,19 @@ const getCoreAnalysis = async (eventDescription, marketData) => {
 
 EVENT: ${eventDescription}
 
-CURRENT MARKET DATA: ${JSON.stringify(marketData)}
+LIVE MARKET DATA (this is real, current data fetched moments ago — you MUST treat these as ground truth and anchor every forecast to them, NOT to any value you recall from training):
+${JSON.stringify(marketData, null, 2)}
+
+CRITICAL ANCHORING RULES:
+- If a live USD/INR rate is provided above, your "expected_range" for currency MUST be anchored to that exact live rate, NEVER to a historical/remembered USD/INR level.
+- If live Nifty, Sensex, crude oil, or gold prices are provided above, treat them as the current baseline. Your "nifty_impact" and "sensex_impact" percentage forecasts must be percentage CHANGES from these live levels, not independent invented numbers.
+- If live market data fields are null/missing, explicitly lower your confidence for that specific prediction and state in your reasoning that live data was unavailable, rather than silently guessing an absolute number.
+
+DIRECTIONAL CONSISTENCY RULE for currency.expected_range (this is mandatory, check it before responding):
+- If usd_inr is "DEPRECIATE" (rupee weakens, rate goes UP): the range must be mostly or entirely ABOVE the live rate. Example: if live rate is 94.5, output something like "94.5 - 96.0" or "94.8 - 96.3" — NOT a range that dips below the live rate.
+- If usd_inr is "APPRECIATE" (rupee strengthens, rate goes DOWN): the range must be mostly or entirely BELOW the live rate. Example: if live rate is 94.5, output something like "93.0 - 94.5" — NOT a range that rises above the live rate.
+- If usd_inr is "STABLE": the range should be a narrow band closely straddling the live rate, e.g. "94.0 - 95.0" for a live rate of 94.5.
+- A range that straddles the live rate evenly while claiming DEPRECIATE or APPRECIATE is WRONG and contradicts itself. Double-check your range matches your stated direction before finalizing.
 
 Return ONLY this exact JSON structure, fully populated, no field left empty:
 
@@ -85,6 +101,11 @@ Return ONLY this exact JSON structure, fully populated, no field left empty:
       "3_months": "Neutral to positive"
     }
   },
+  "assumptions": [
+    "Assumption 1 (e.g. no new sanctions are imposed)",
+    "Assumption 2 (e.g. no major domestic policy shock)",
+    "Assumption 3 (e.g. no global recession during this period)"
+  ],
   "sectors": [
     {
       "name": "Sector name",
@@ -117,10 +138,12 @@ Return ONLY this exact JSON structure, fully populated, no field left empty:
       "loser_stocks": ["Stock1"]
     }
   ],
-  "currency": {
+
+IMPORTANT — exact field names required for commodities: use "india_economic_impact" (NOT "inds_economic_impact" or any other spelling) and "loser_stocks" (NOT "loser_stock"). Copy these field names exactly as shown character-by-character.
+"currency": {
     "usd_inr": "APPRECIATE / DEPRECIATE / STABLE",
     "probability": 72,
-    "expected_range": "83.5 - 85.2",
+    "expected_range": "MUST skew toward the predicted direction, anchored to the live rate. See DIRECTIONAL CONSISTENCY RULE below.",
     "reasoning": "why",
     "timeframe": "SHORT_TERM / MEDIUM_TERM"
   },
@@ -132,7 +155,7 @@ Return ONLY this exact JSON structure, fully populated, no field left empty:
   }
 }
 
-Populate every field with your best estimate. Provide 3-5 sectors and 2-3 commodities minimum. Return complete valid JSON only.`
+Populate every field with your best estimate, including "assumptions" (3 items) — this field is MANDATORY and must never be omitted. Provide 3-5 sectors and 2-3 commodities minimum. Return complete valid JSON only.`
       }
     ],
     temperature: 0,
@@ -208,7 +231,9 @@ Return ONLY this exact JSON structure, fully populated, no field left empty:
     ]
   },
   "investment_thesis": "2-3 sentence professional investment thesis",
-  "key_risks": ["Risk 1", "Risk 2", "Risk 3"],
+  "key_risks": [
+    {"risk": "Description of the risk", "probability": "Low / Medium / High", "impact": "Low / Medium / High"}
+  ],
   "reasoning_trace": {
     "event_type_identified": "type",
     "historical_events_matched": ["Event1", "Event2"],
@@ -219,7 +244,16 @@ Return ONLY this exact JSON structure, fully populated, no field left empty:
   "news_factors_considered": ["Factor 1", "Factor 2", "Factor 3"]
 }
 
-Provide at least 2 historical matches, all 3 scenarios, 2-3 winners and 2-3 losers. Return complete valid JSON only.`
+Provide at least 2 historical matches, all 3 scenarios, 2-3 winners and 2-3 losers, and 3-4 key_risks.
+
+MANDATORY key_risks FORMAT — each entry MUST be an OBJECT, never a plain string. Example of CORRECT format:
+"key_risks": [
+  {"risk": "Further unexpected RBI tightening", "probability": "Medium", "impact": "High"},
+  {"risk": "Escalating global inflation", "probability": "Low", "impact": "Medium"}
+]
+INCORRECT format (do NOT do this): "key_risks": ["Further unexpected RBI tightening"]
+
+Return complete valid JSON only.`
       }
     ],
     temperature: 0,

@@ -33,6 +33,34 @@ router.post('/', async (req, res) => {
     // Get AI analysis
     const analysis = await analyzeEvent(event, marketData);
 
+    // Safety net: normalize known field-name typos the AI occasionally produces
+    if (Array.isArray(analysis.commodities)) {
+      analysis.commodities = analysis.commodities.map(c => ({
+        ...c,
+        india_economic_impact: c.india_economic_impact ?? c.inds_economic_impact ?? null,
+        loser_stocks: c.loser_stocks ?? c.loser_stock ?? []
+      }));
+    }
+
+    // Safety net: if key_risks came back as plain strings instead of objects, convert them
+    if (Array.isArray(analysis.key_risks)) {
+      analysis.key_risks = analysis.key_risks.map(r => {
+        if (typeof r === 'string') {
+          return { risk: r, probability: 'Medium', impact: 'Medium' };
+        }
+        return r;
+      });
+    }
+
+    // Safety net: if assumptions is missing entirely, provide a generic fallback so UI doesn't break
+    if (!Array.isArray(analysis.assumptions) || analysis.assumptions.length === 0) {
+      analysis.assumptions = [
+        'No major unforeseen escalation beyond the scope of this event',
+        'No significant policy surprise from RBI or other regulators during this period',
+        'Global macro conditions remain broadly stable'
+      ];
+    }
+
     // Save event to database
     const { data: eventData, error: eventError } = await supabase
       .from('events')

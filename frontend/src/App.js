@@ -428,13 +428,38 @@ function App() {
                 </div>
               )}
 
+             {/* Assumptions */}
+              {analysis.assumptions?.length > 0 && (
+                <div className="summary-card">
+                  <h2>📌 Assumptions</h2>
+                  <ul className="assumptions-list">
+                    {analysis.assumptions.map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                </div>
+              )}
+
               {/* Key Risks */}
               {analysis.key_risks?.length > 0 && (
                 <div className="summary-card">
                   <h2>⚠️ Key Risks</h2>
-                  <div className="risk-tag-list">
-                    {analysis.key_risks.map((r, i) => <div className="risk-tag" key={i}>{r}</div>)}
-                  </div>
+                  {analysis.key_risks.map((r, i) => {
+                    if (typeof r === 'string') {
+                      return <div className="risk-tag" key={i}>{r}</div>;
+                    }
+                    return (
+                      <div className="risk-item" key={i}>
+                        <div className="risk-text">{r.risk}</div>
+                        <div className="risk-tags-row">
+                          <span className={`risk-pill ${(r.probability || '').toLowerCase()}`}>
+                            Probability: {r.probability}
+                          </span>
+                          <span className={`risk-pill ${(r.impact || '').toLowerCase()}`}>
+                            Impact: {r.impact}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
